@@ -15,11 +15,11 @@ private:
         Node(int m) : keys(m, -1), refs(m, -1) {}
     };
 
-    int m;
+    static int m;
 
     // Helper functions
     static int getM();
-    static void setM();
+    static void setM(const int &m);
     static void readNode(std::fstream& file, int index, Node& node, int m);
     static void writeNode(std::fstream& file, int index, Node& node, int m);
     static int allocateFreeNode(std::fstream& file, int m);
