@@ -2,6 +2,7 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+using namespace std;
 
 void BTreeIndex::setM(const int &m) {
     this.m = m;
@@ -12,7 +13,7 @@ int BTreeIndex::getM() {
 }
 
 // Read node from file at 'index'
-void BTreeIndex::readNode(std::fstream& file, int index, Node& node) {
+void BTreeIndex::readNode(fstream& file, int index, Node& node) {
     file.seekg(index * (sizeof(int) * (2 + 2 * m))); // Calculate node position
     file.read(reinterpret_cast<char*>(&node.is_leaf), sizeof(int));
     file.read(reinterpret_cast<char*>(&node.next_free), sizeof(int));
@@ -25,7 +26,7 @@ void BTreeIndex::readNode(std::fstream& file, int index, Node& node) {
 }
 
 // Write node to file at 'index'
-void BTreeIndex::writeNode(std::fstream& file, int index, Node& node) {
+void BTreeIndex::writeNode(fstream& file, int index, Node& node) {
     file.seekp(index * (sizeof(int) * (2 + 2 * m)));
     file.write(reinterpret_cast<const char*>(&node.is_leaf), sizeof(int));
     file.write(reinterpret_cast<const char*>(&node.next_free), sizeof(int));
@@ -38,7 +39,7 @@ void BTreeIndex::writeNode(std::fstream& file, int index, Node& node) {
 }
 
 // Allocate a free node from the free list
-int BTreeIndex::allocateFreeNode(std::fstream& file) {
+int BTreeIndex::allocateFreeNode(fstream& file) {
     Node headerNode(m);
     readNode(file, 0, headerNode);
 
@@ -56,7 +57,7 @@ int BTreeIndex::allocateFreeNode(std::fstream& file) {
 }
 
 // Add node back to free list
-void BTreeIndex::freeNode(std::fstream& file, int index) {
+void BTreeIndex::freeNode(fstream& file, int index) {
     Node headerNode(m);
     readNode(file, 0, headerNode);
 
@@ -72,11 +73,11 @@ void BTreeIndex::freeNode(std::fstream& file, int index) {
 
 // Find insertion position in a node
 int BTreeIndex::findKeyIndex(const Node& node, int RecordID) {
-    return std::lower_bound(node.keys.begin(), node.keys.end(), RecordID) - node.keys.begin();
+    return lower_bound(node.keys.begin(), node.keys.end(), RecordID) - node.keys.begin();
 }
 
 // Split node and update parent (de simplified version nb2a n3delaha b3deen)
-void BTreeIndex::split(std::fstream& file, int nodeIndex, int parentIndex) {
+void BTreeIndex::split(fstream& file, int nodeIndex, int parentIndex) {
     Node oldNode(m), parentNode(m);
     readNode(file, nodeIndex, oldNode);
     readNode(file, parentIndex, parentNode);
@@ -88,8 +89,8 @@ void BTreeIndex::split(std::fstream& file, int nodeIndex, int parentIndex) {
 
     // Split keys and references
     int splitPos = m/2;
-    std::copy(oldNode.keys.begin() + splitPos, oldNode.keys.end(), newNode.keys.begin());
-    std::copy(oldNode.refs.begin() + splitPos, oldNode.refs.end(), newNode.refs.begin());
+    copy(oldNode.keys.begin() + splitPos, oldNode.keys.end(), newNode.keys.begin());
+    copy(oldNode.refs.begin() + splitPos, oldNode.refs.end(), newNode.refs.begin());
 
     // Update parent
     int promotedKey = oldNode.keys[splitPos];
@@ -108,4 +109,38 @@ void BTreeIndex::split(std::fstream& file, int nodeIndex, int parentIndex) {
     writeNode(file, nodeIndex, oldNode);
     writeNode(file, newIndex, newNode);
     writeNode(file, parentIndex, parentNode);
+}
+
+void BTreeIndex::CreateIndexFileFile(const char* filename, int numberOfRecords, int m) {
+    BTreeIndex::m = m;
+
+    fstream file(filename, ios::binary | ios::out);
+    if (!file.is_open()) {
+        throw runtime_error("Failed to create index file");
+    }
+
+    // Initialize header node (index 0)
+    Node headerNode(m);
+    headerNode.is_leaf = -1;
+    headerNode.next_free = (numberOfRecords > 1) ? 1 : -1; // First free node
+
+    // Initialize all keys and refs to -1
+    fill(headerNode.keys.begin(), headerNode.keys.end(), -1);
+    fill(headerNode.refs.begin(), headerNode.refs.end(), -1);
+
+    writeNode(file, 0, headerNode);
+
+    // Initialize free nodes (index 1 to n-1)
+    for (int i = 1; i < numberOfRecords; i++) {
+        Node freeNode(m);
+        freeNode.is_leaf = -1;
+        freeNode.next_free = (i < numberOfRecords - 1) ? i + 1 : -1;
+
+        fill(freeNode.keys.begin(), freeNode.keys.end(), -1);
+        fill(freeNode.refs.begin(), freeNode.refs.end(), -1);
+
+        writeNode(file, i, freeNode);
+    }
+
+    file.close();
 }
