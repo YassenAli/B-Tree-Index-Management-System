@@ -2,14 +2,17 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+
 using namespace std;
 
-void BTreeIndex::setM(const int &m) {
-    this.m = m;
+int BTreeIndex::m = 0;
+
+void BTreeIndex::setM(int order) {
+    BTreeIndex::m = order;
 }
 
 int BTreeIndex::getM() {
-    return m;
+    return BTreeIndex::m;
 }
 
 // Read node from file at 'index'
@@ -40,12 +43,12 @@ void BTreeIndex::writeNode(fstream& file, int index, Node& node) {
 
 // Allocate a free node from the free list
 int BTreeIndex::allocateFreeNode(fstream& file) {
-    Node headerNode(m);
+    Node headerNode;
     readNode(file, 0, headerNode);
 
     if(headerNode.next_free == -1) return -1; // No free nodes
 
-    Node freeNode(m);
+    Node freeNode;
     readNode(file, headerNode.next_free, freeNode);
 
     // Update header's next free
@@ -58,10 +61,10 @@ int BTreeIndex::allocateFreeNode(fstream& file) {
 
 // Add node back to free list
 void BTreeIndex::freeNode(fstream& file, int index) {
-    Node headerNode(m);
+    Node headerNode;
     readNode(file, 0, headerNode);
 
-    Node nodeToFree(m);
+    Node nodeToFree;
     nodeToFree.next_free = headerNode.next_free;
     nodeToFree.is_leaf = -1; // Mark as free
 
@@ -78,13 +81,13 @@ int BTreeIndex::findKeyIndex(const Node& node, int RecordID) {
 
 // Split node and update parent (de simplified version nb2a n3delaha b3deen)
 void BTreeIndex::split(fstream& file, int nodeIndex, int parentIndex) {
-    Node oldNode(m), parentNode(m);
+    Node oldNode, parentNode;
     readNode(file, nodeIndex, oldNode);
     readNode(file, parentIndex, parentNode);
 
     // Create new node
     int newIndex = allocateFreeNode(file);
-    Node newNode(m);
+    Node newNode;
     newNode.is_leaf = oldNode.is_leaf;
 
     // Split keys and references
@@ -112,7 +115,7 @@ void BTreeIndex::split(fstream& file, int nodeIndex, int parentIndex) {
 }
 
 void BTreeIndex::CreateIndexFileFile(const char* filename, int numberOfRecords, int m) {
-    BTreeIndex::m = m;
+    setM(m);
 
     fstream file(filename, ios::binary | ios::out);
     if (!file.is_open()) {
@@ -120,7 +123,7 @@ void BTreeIndex::CreateIndexFileFile(const char* filename, int numberOfRecords, 
     }
 
     // Initialize header node (index 0)
-    Node headerNode(m);
+    Node headerNode;
     headerNode.is_leaf = -1;
     headerNode.next_free = (numberOfRecords > 1) ? 1 : -1; // First free node
 
@@ -132,7 +135,7 @@ void BTreeIndex::CreateIndexFileFile(const char* filename, int numberOfRecords, 
 
     // Initialize free nodes (index 1 to n-1)
     for (int i = 1; i < numberOfRecords; i++) {
-        Node freeNode(m);
+        Node freeNode;
         freeNode.is_leaf = -1;
         freeNode.next_free = (i < numberOfRecords - 1) ? i + 1 : -1;
 
