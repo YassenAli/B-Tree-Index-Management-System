@@ -12,8 +12,7 @@
 #include <tuple>
 using namespace std;
 
-struct BTreeNode
-{
+struct BTreeNode {
 public:
     int isLeaf;
     // update
