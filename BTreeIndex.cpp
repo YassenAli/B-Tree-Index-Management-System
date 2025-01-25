@@ -148,6 +148,108 @@ void BTreeIndex::CreateIndexFileFile(const char* filename, int numberOfRecords, 
 
     file.close();
 }
+////////////////////////////////////////////////// Insertion //////////////////////////////////////////////////
+int BTreeIndex::InsertNewRecordAtIndex(const char* filename, int RecordID, int Reference) {
+    fstream file(filename, ios::binary | ios::in | ios::out);
+    if (!file.is_open()) throw runtime_error("Failed to open index file");
+
+    vector<int> parentStack; // Stores parent node indices
+    int currentIndex = 1;    // Start at root
+    Node currentNode;
+    bool isRoot = true;
+
+    // Traverse to appropriate leaf node
+    while (true) {
+        readNode(file, currentIndex, currentNode);
+
+        if (currentNode.is_leaf == 0) break; // Found leaf
+
+        // Find insertion path
+        int pos = findKeyIndex(currentNode, RecordID);
+        parentStack.push_back(currentIndex);
+        currentIndex = currentNode.refs[pos];
+        isRoot = false;
+    }
+
+    // Check for duplicate
+    int existingPos = findKeyIndex(currentNode, RecordID);
+    if (existingPos < m && currentNode.keys[existingPos] == RecordID) {
+        file.close();
+        return -1;
+    }
+
+    // Insert in sorted position
+    int insertPos = findKeyIndex(currentNode, RecordID);
+    for (int i = m-1; i > insertPos; i--) {
+        currentNode.keys[i] = currentNode.keys[i-1];
+        currentNode.refs[i] = currentNode.refs[i-1];
+    }
+    currentNode.keys[insertPos] = RecordID;
+    currentNode.refs[insertPos] = Reference;
+    writeNode(file, currentIndex, currentNode);
+
+    // Handle overflow
+    int keysCount = count_if(currentNode.keys.begin(), currentNode.keys.end(),
+                             [](int k){ return k != -1; });
+
+    while (keysCount > m-1) { // Needs split
+        int newIndex = allocateFreeNode(file);
+        if (newIndex == -1) {
+            file.close();
+            return -1; // No space
+        }
+
+        Node newNode;
+        int splitPos = m/2;
+        int promotedKey = currentNode.keys[splitPos];
+
+        // Split keys and refs
+        copy(currentNode.keys.begin() + splitPos + 1, currentNode.keys.end(), newNode.keys.begin());
+        copy(currentNode.refs.begin() + splitPos + 1, currentNode.refs.end(), newNode.refs.begin());
+        fill(currentNode.keys.begin() + splitPos, currentNode.keys.end(), -1);
+        fill(currentNode.refs.begin() + splitPos, currentNode.refs.end(), -1);
+
+        // Set node types
+        newNode.is_leaf = currentNode.is_leaf;
+        writeNode(file, newIndex, newNode);
+        writeNode(file, currentIndex, currentNode);
+
+        // Prepare promoted key for parent
+        if (parentStack.empty()) { // Splitting root
+            Node newRoot;
+            newRoot.is_leaf = 1;
+            newRoot.keys[0] = promotedKey;
+            newRoot.refs[0] = currentIndex;
+            newRoot.refs[1] = newIndex;
+            writeNode(file, 1, newRoot);
+            break;
+        } else { // Update parent
+            int parentIndex = parentStack.back();
+            parentStack.pop_back();
+            Node parentNode;
+            readNode(file, parentIndex, parentNode);
+
+            // Find insert position in parent
+            int parentPos = findKeyIndex(parentNode, promotedKey);
+            for (int i = m-1; i > parentPos; i--) {
+                parentNode.keys[i] = parentNode.keys[i-1];
+                parentNode.refs[i+1] = parentNode.refs[i];
+            }
+            parentNode.keys[parentPos] = promotedKey;
+            parentNode.refs[parentPos+1] = newIndex;
+            writeNode(file, parentIndex, parentNode);
+
+            // Move up to check parent
+            currentIndex = parentIndex;
+            currentNode = parentNode;
+            keysCount = count_if(currentNode.keys.begin(), currentNode.keys.end(),
+                                 [](int k){ return k != -1; });
+        }
+    }
+
+    file.close();
+    return currentIndex;
+}
 
 ////////////////////////////////////////////////// Deletion //////////////////////////////////////////////////
 void BTreeIndex::DeleteRecordFromIndex(const char* filename, int RecordID) {
