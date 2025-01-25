@@ -12,8 +12,7 @@
 #include <tuple>
 using namespace std;
 
-struct BTreeNode
-{
+struct BTreeNode {
 public:
     int isLeaf;
     // update
@@ -23,9 +22,7 @@ public:
     vector<BTreeNode> children;
 };
 
-class BTreeIndex
-{
-
+class BTreeIndex {
     const char *const BTreeFileName = "BTreeIndex.txt";
     int numberOfRecords;
     int m;
