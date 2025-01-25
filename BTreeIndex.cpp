@@ -1,420 +1,693 @@
 #include "BTreeIndex.h"
-#include <fstream>
-#include <vector>
-#include <tuple>
-#include <algorithm>
-#include <iostream>
 
 using namespace std;
-using namespace std;
 
-int BTreeIndex::m = 0;
-
-void BTreeIndex::setM(int order) {
-    BTreeIndex::m = order;
-}
-
-int BTreeIndex::getM() {
-    return BTreeIndex::m;
-}
-
-// Read node from file at 'index'
-void BTreeIndex::readNode(fstream& file, int index, Node& node) {
-    file.seekg(index * (sizeof(int) * (2 + 2 * m))); // Calculate node position
-    file.read(reinterpret_cast<char*>(&node.is_leaf), sizeof(int));
-    file.read(reinterpret_cast<char*>(&node.next_free), sizeof(int));
-
-    // Read keys and references
-    for(int i = 0; i < m; i++) {
-        file.read(reinterpret_cast<char*>(&node.keys[i]), sizeof(int));
-        file.read(reinterpret_cast<char*>(&node.refs[i]), sizeof(int));
+void BTreeIndex::CreateIndexFile(const char *filename, int numberOfRecords, int m)
+{
+    BTreeFile.open(BTreeFileName, ios::in | ios::out | ios::binary);
+    this->numberOfRecords = numberOfRecords;
+    this->m = m;
+    /////////////////////////////////////////////////////////
+    ofstream outfile(filename, ios::binary);
+    outfile.clear();
+    int i = 1;
+    for (int j = 0; j < numberOfRecords; ++j) {
+        if (i == numberOfRecords) {
+            i = -1;
+        }
+        outfile << -1 << "  " << i << "  ";
+        for (int k = 0; k < numberOfRecords - 1; ++k) {
+            outfile << "-1" << "  ";
+        }
+        i++;
+        outfile << "\n";
     }
+    readFile(filename);
+    outfile.close();
+    ///////////////////////////////////////////////////////////////
 }
 
-// Write node to file at 'index'
-void BTreeIndex::writeNode(fstream& file, int index, Node& node) {
-    file.seekp(index * (sizeof(int) * (2 + 2 * m)));
-    file.write(reinterpret_cast<const char*>(&node.is_leaf), sizeof(int));
-    file.write(reinterpret_cast<const char*>(&node.next_free), sizeof(int));
-
-    for(int i = 0; i < m; i++) {
-        file.write(reinterpret_cast<const char*>(&node.keys[i]), sizeof(int));
-        file.write(reinterpret_cast<const char*>(&node.refs[i]), sizeof(int));
+int BTreeIndex::InsertNewRecordAtIndex(int RecordID, int Reference)
+{
+    vector<BTreeNode> bTree = readFile(BTreeFileName);
+    if (bTree[0].count == 0){
+        head = bTree[0].node[0].first;
+        bTree[0].node[0].first = RecordID;
+        bTree[0].node[0].second = Reference;
+        bTree[0].isLeaf = 0;
+        bTree[0].count++;
+        savefile(BTreeFileName, bTree,m);
+        return 1;
     }
-    file.flush();
-}
+    stack<int> visited;
+    int i = 0;
+    bool found = false;
+    while (bTree[i].isLeaf){
+        visited.push(i);
+        found = false;
+        for (int j = 0; j < bTree[i].node.size(); ++j) {
+            if (bTree[i].node[j].first >= RecordID){
+                i = bTree[i].node[j].second -1;
+                found = true;
+                break;
+            }
+        }
 
-// Allocate a free node from the free list
-int BTreeIndex::allocateFreeNode(fstream& file) {
-    Node headerNode;
-    readNode(file, 0, headerNode);
+        if (!found){
+            i = bTree[i].node[bTree[i].count -1].second -1;
+        }
+    }
+    bTree[i].node.push_back(make_pair(RecordID,Reference));
+    sort(bTree[i].node.begin(), bTree[i].node.end(), [](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+        if (a.first != -1 && b.first != -1) {
+            return a.first < b.first;
+        }
+        return a.first != -1;
+    });
 
-    if(headerNode.next_free == -1) return -1; // No free nodes
-
-    Node freeNode;
-    readNode(file, headerNode.next_free, freeNode);
-
-    // Update header's next free
-    int allocatedIndex = headerNode.next_free;
-    headerNode.next_free = freeNode.next_free;
-    writeNode(file, 0, headerNode);
-
-    return allocatedIndex;
-}
-
-// Add node back to free list
-void BTreeIndex::freeNode(fstream& file, int index) {
-    Node headerNode;
-    readNode(file, 0, headerNode);
-
-    Node nodeToFree;
-    nodeToFree.next_free = headerNode.next_free;
-    nodeToFree.is_leaf = -1; // Mark as free
-
-    // Update header to point to newly freed node
-    headerNode.next_free = index;
-    writeNode(file, 0, headerNode);
-    writeNode(file, index, nodeToFree);
-}
-
-// Find insertion position in a node
-int BTreeIndex::findKeyIndex(const Node& node, int RecordID) {
-    return lower_bound(node.keys.begin(), node.keys.end(), RecordID) - node.keys.begin();
-}
-
-// Split node and update parent (de simplified version nb2a n3delaha b3deen)
-void BTreeIndex::split(fstream& file, int nodeIndex, int parentIndex) {
-    Node oldNode, parentNode;
-    readNode(file, nodeIndex, oldNode);
-    readNode(file, parentIndex, parentNode);
-
-    // Create new node
-    int newIndex = allocateFreeNode(file);
-    Node newNode;
-    newNode.is_leaf = oldNode.is_leaf;
-
-    // Split keys and references
-    int splitPos = m/2;
-    copy(oldNode.keys.begin() + splitPos, oldNode.keys.end(), newNode.keys.begin());
-    copy(oldNode.refs.begin() + splitPos, oldNode.refs.end(), newNode.refs.begin());
-
-    // Update parent
-    int promotedKey = oldNode.keys[splitPos];
-    int insertPos = findKeyIndex(parentNode, promotedKey);
-
-    // Shift parent keys/references
-    for(int i = m-1; i > insertPos; i--) {
-        parentNode.keys[i] = parentNode.keys[i-1];
-        parentNode.refs[i] = parentNode.refs[i-1];
+    bTree[i].count++;
+    int newFromSplitIndex = -1;
+    if (bTree[i].count > m){
+        newFromSplitIndex = split(i, bTree);
+    }else{
+        bTree[i].node.pop_back();
+        savefile(BTreeFileName, bTree, m);
     }
 
-    parentNode.keys[insertPos] = promotedKey;
-    parentNode.refs[insertPos] = newIndex;
-
-    // Write changes
-    writeNode(file, nodeIndex, oldNode);
-    writeNode(file, newIndex, newNode);
-    writeNode(file, parentIndex, parentNode);
-}
-
-void BTreeIndex::CreateIndexFileFile(const char* filename, int numberOfRecords, int m) {
-    setM(m);
-
-    fstream file(filename, ios::binary | ios::out);
-    if (!file.is_open()) {
-        throw runtime_error("Failed to create index file");
+    if(i == 0){
+        return 1;
     }
 
-    // Initialize header node (index 0)
-    Node headerNode;
-    headerNode.is_leaf = -1;
-    headerNode.next_free = (numberOfRecords > 1) ? 1 : -1; // First free node
-
-    // Initialize all keys and refs to -1
-    fill(headerNode.keys.begin(), headerNode.keys.end(), -1);
-    fill(headerNode.refs.begin(), headerNode.refs.end(), -1);
-
-    writeNode(file, 0, headerNode);
-
-    // Initialize free nodes (index 1 to n-1)
-    for (int i = 1; i < numberOfRecords; i++) {
-        Node freeNode;
-        freeNode.is_leaf = -1;
-        freeNode.next_free = (i < numberOfRecords - 1) ? i + 1 : -1;
-
-        fill(freeNode.keys.begin(), freeNode.keys.end(), -1);
-        fill(freeNode.refs.begin(), freeNode.refs.end(), -1);
-
-        writeNode(file, i, freeNode);
+    while (!visited.empty()) {
+        int lastVisitedIndex = visited.top();
+        visited.pop();
+        newFromSplitIndex = updateAfterInsert(lastVisitedIndex, newFromSplitIndex);
     }
 
-    file.close();
+    return -1;
+}
+void BTreeIndex::DeleteCase2(const char *filename, vector<BTreeNode> &bTree, BTreeNode &find, int RecordID, int &count, int &temp)
+{
+    for (int i = 0; i < find.node.size(); ++i)
+    { // case 2
+        if (find.node[i].first == RecordID)
+        {
+            find.node[i].first = -1;
+            find.node[i].second = -1;
+        }
+        sort(find.node.begin(), find.node.end(), [](const std::pair<int, int> &a, const std::pair<int, int> &b)
+             {
+			if (a.first != -1 && b.first != -1) {
+				return a.first < b.first;
+			}
+			return a.first != -1; });
+    }
+    temp = find.node[count - 2].first;
+    bTree[(find.place - 1)].node = find.node;
+    for (auto &i : bTree)
+    {
+        for (auto &k : i.node)
+        {
+            if (k.first == RecordID)
+            {
+                k.first = temp;
+            }
+        }
+    }
+    find.count--;
+    savefile(filename, bTree, m);
 }
 
-// Display entire index file content
-void BTreeIndex::DisplayIndexFileContent(const char* filename) {
-    fstream file(filename, ios::binary | ios::in);
-    if (!file.is_open()) {
-        cerr << "Error opening file: " << filename << endl;
+void BTreeIndex::DeleteCase1(const char *filename, vector<BTreeNode> &bTree, BTreeNode &find, int RecordID){
+    for (int i = 0; i < find.node.size(); ++i)
+    { // case 1
+        if (find.node[i].first == RecordID)
+        {
+            find.node[i].first = -1;
+            find.node[i].second = -1;
+        }
+        sort(find.node.begin(), find.node.end(), [](const std::pair<int, int> &a, const std::pair<int, int> &b)
+        {
+            if (a.first != -1 && b.first != -1) {
+                return a.first < b.first;
+            }
+            return a.first != -1; });
+    }
+    find.count--;
+    bTree[(find.place - 1)].node = find.node;
+    savefile(filename, bTree, m);
+}
+void BTreeIndex::DeleteRecordFromIndex(const char *filename, int RecordID, int m)
+{
+    vector<BTreeNode> bTree;
+    bTree = readFile(filename);
+    int balance = m / 2;
+    int count = 0;
+    int temp;
+    BTreeNode find; // to find the node
+    for (auto &i : bTree)
+    {
+        if (i.isLeaf == 0)
+        {
+            for (int k = 0; k < i.node.size(); ++k)
+            {
+                if (i.node[k].first == RecordID)
+                {
+                    find = i;
+                    break;
+                }
+            }
+        }
+    }
+    if (find.place == 1)
+    { // if the node is the root
+        DeleteCase1(filename,bTree,find,RecordID);
+        bTree = readFile(filename);
+        if (bTree[0].count == 0){
+            bTree[0].node[0].first = 2;
+            head = 1;
+            bTree[0].isLeaf =  -1;
+        }
+        savefile(filename, bTree, m);
         return;
     }
-
-    // Calculate total nodes from file size
-    file.seekg(0, ios::end);
-    int fileSize = file.tellg();
-    file.seekg(0, ios::beg);
-
-    int nodeSize = sizeof(int) * (2 + 2 * m); // is_leaf + next_free + m keys + m refs
-    int totalNodes = fileSize / nodeSize;
-
-    // Read and print all nodes
-    for (int i = 0; i < totalNodes; i++) {
-        Node node;
-        readNode(file, i, node);
-
-        // Print node information
-        cout << node.is_leaf << " " << node.next_free;
-        for (int j = 0; j < m; j++) {
-            cout << " " << node.keys[j];
+    for (auto &i : find.node)
+    { // get the node balance
+        if (i.first != -1)
+        {
+            count++;
         }
-        for (int j = 0; j < m; j++) {
-            cout << " " << node.refs[j];
+    }
+    if ((count - 1) >= balance)
+    {
+        if (find.node[count - 1].first == RecordID)
+        {
+            DeleteCase2(filename, bTree, find, RecordID, count, temp);
         }
+        else
+        {
+            DeleteCase1(filename,bTree,find, RecordID);
+        }
+    }
+    else
+    {
+        // case 3 or 4
+        BTreeNode parent;
+        BTreeNode siblings;
+        bool flag = 0;
+        for (size_t i = 0; i < bTree.size(); i++)
+        {
+            if (bTree[i].isLeaf == 1)
+            {
+                for (size_t j = 0; j < bTree[i].node.size(); j++)
+                {
+                    if (bTree[i].node[j].second == find.place)
+                    {
+                        parent = bTree[i];
+                        break;
+                    }
+                }
+            }
+        }
+
+        for (size_t i = 0; i < parent.children.size(); i++)
+        {
+            int ct = 0;
+            for (size_t j = 0; j < parent.children[i].node.size(); j++)
+            {
+                if (parent.children[i].node[j].first != -1)
+                {
+                    ct++;
+                }
+            }
+            parent.children[i].count = ct;
+        }
+
+        for (size_t i = 0; i < parent.children.size() ; i++)
+        {
+            if (parent.children[i].place == find.place){
+                break;
+            }
+            if ((parent.children[i].count > balance) && (parent.children[i +1].place == find.place))
+            {
+                siblings = parent.children[i];
+                flag = 1;
+                break;
+            }
+
+        }
+        if (flag)
+        {
+            // case 3
+            auto tmp = siblings.node[siblings.count - 1];/// the big one in the left
+            DeleteCase2(filename, bTree, siblings, siblings.node[siblings.count - 1].first, siblings.count, temp);
+            find.node[find.count] = tmp;
+            find.count++;
+            sort(find.node.begin(), find.node.end(), [](const std::pair<int, int> &a, const std::pair<int, int> &b)
+                 {
+						if (a.first != -1 && b.first != -1) {
+							return a.first < b.first;
+						}
+						return a.first != -1; });
+            if(find.node[find.count -1].first == RecordID){
+                DeleteCase2(filename, bTree, find, RecordID, find.count, temp);
+            }else{
+                DeleteCase1(filename, bTree,find, RecordID);
+            }
+
+        }
+        else
+        {
+            if(find.node[find.count -1].first == RecordID){
+                DeleteCase2(filename, bTree, find, RecordID, find.count, temp);
+            }else{
+                DeleteCase1(filename, bTree,find, RecordID);
+            }
+            bTree = readFile(filename);
+            int headTree = head;
+            head = find.place;
+            pair<int, int> temp = make_pair(bTree[find.place -1].node[0].first,bTree[find.place -1].node[0].second);
+            for (int i = 0; i < parent.children.size(); ++i) {
+                if (parent.node[i].second == find.place){
+                    parent.node[i].second = -1;
+                    parent.node[i].first = -1;
+                    sort(parent.node.begin(), parent.node.end(), [](const std::pair<int, int> &a, const std::pair<int, int> &b)
+                    {
+                        if (a.first != -1 && b.first != -1) {
+                            return a.first < b.first;
+                        }
+                        return a.first != -1; });
+                    break;
+                }
+            }
+            bTree[parent.place -1] = parent;
+            int pl = find.place;
+            find = bTree[pl -1];
+            find.isLeaf = -1;
+            find.node[0].first = headTree;
+            find.node[0].second = -1;
+            bTree[pl -1] = find;
+            savefile(filename, bTree,m);
+            InsertNewRecordAtIndex(temp.first, temp.second);
+
+        }
+    }
+}
+
+void BTreeIndex::DisplayIndexFileContent(const char *filename)
+{
+    ifstream inputFile(filename, ios::in | ios::binary);
+    vector<BTreeNode> Tree = readFile(filename);
+    cout << "<---------------------Head--------------------->\n ";
+    cout << "Empty Place: " << head << endl;
+    for (int i = 0; i < Tree.size(); ++i)
+    {
+        cout << " Place: " << Tree[i].place << " | HasLeaf: " << Tree[i].isLeaf << " | Node: ";
+        for (const auto &pair : Tree[i].node)
+        {
+            cout << "(" << pair.first << ", " << pair.second << ") ";
+        }
+
         cout << endl;
     }
-    file.close();
 }
 
-// Search for a record in the B-tree
-int BTreeIndex::SearchARecord(const char* filename, int RecordID) {
-    fstream file(filename, ios::binary | ios::in);
-    if (!file.is_open()) return -1;
+//////////////////////////////////////Functions for searching//////////////////////////////////////
 
-    int currentIndex = 1; // Start at root
-    Node currentNode;
+bool BTreeIndex::isEmpty(int recordNumber)
+{
+    return read_val(recordNumber, 0) == -1;
+}
 
-    while (true) {
-        readNode(file, currentIndex, currentNode);
+bool BTreeIndex::isLeaf(int recordNumber)
+{
+    return read_val(recordNumber, 0) == 0;
+}
 
-        // Leaf node check
-        if (currentNode.is_leaf == 0) {
-            int pos = findKeyIndex(currentNode, RecordID);
-            if (pos < m && currentNode.keys[pos] == RecordID) {
-                file.close();
-                return currentNode.refs[pos];
+bool BTreeIndex::record_valid(int recordNumber) const
+{
+    if (recordNumber <= 0 || recordNumber > numberOfRecords)
+        return false;
+
+    return true;
+}
+
+int BTreeIndex::read_val(int rowIndex, int columnIndex)
+{
+    BTreeFile.seekg(0, std::ios::beg);
+    int x;
+    for (int i = 0; i < rowIndex * (2 * m + 1) + columnIndex + 1; i++)
+    {
+        BTreeFile >> x;
+    }
+
+    return x;
+}
+
+vector<pair<int, int>> BTreeIndex::read_node_values(int recordNumber)
+{
+    if (record_valid(recordNumber))
+    {
+
+        vector<pair<int, int>> theNode;
+
+        for (int i = 1; i <= numberOfRecords; i += 2)
+        {
+            int key = read_val(recordNumber, i);
+            int value = read_val(recordNumber, i + 1);
+            theNode.emplace_back(key, value);
+        }
+        return theNode;
+    }
+    else
+    {
+        return {};
+    }
+}
+
+int BTreeIndex::SearchARecord(const char *filename, int RecordID)
+{
+    if (isEmpty(1))
+        return -1;
+    std::vector<std::pair<int, int>> current;
+
+    int i = 1;
+    bool found;
+    while (!isLeaf(i))
+    {
+        current = read_node_values(i);
+        found = false;
+        for (auto p : current)
+        {
+            if (p.first >= RecordID)
+            {
+                i = p.second;
+                found = true;
+                break;
             }
-            file.close();
-            return -1;
         }
 
-        // Non-leaf navigation
-        int pos = findKeyIndex(currentNode, RecordID);
-        if (pos >= m || currentNode.refs[pos] == -1) {
-            file.close();
-            return -1; // Invalid path
-        }
-        currentIndex = currentNode.refs[pos];
+        if (!found)
+            return -1;
     }
+
+    current = read_node_values(i);
+
+    for (auto pair : current)
+        if (pair.first == RecordID)
+            return pair.second;
+
+    return -1;
 }
 
-////////////////////////////////////////////////// Insertion //////////////////////////////////////////////////
-int BTreeIndex::InsertNewRecordAtIndex(const char* filename, int RecordID, int Reference) {
-    fstream file(filename, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) throw runtime_error("Failed to open index file");
+void BTreeIndex::run()
+{
+    int choice, recordID, reference;
 
-    vector<int> parentStack; // Stores parent node indices
-    int currentIndex = 1;    // Start at root
-    Node currentNode;
-    bool isRoot = true;
+    do
+    {
+        cout << "\nB-Tree Index Menu:" << endl;
+        cout << "1. Insert New Record" << endl;
+        cout << "2. Delete Record" << endl;
+        cout << "3. Display Index File Content" << endl;
+        cout << "4. Search for a Record" << endl;
+        cout << "5. Exit" << endl;
+        cout << "Enter your choice: ";
+        cin >> choice;
 
-    // Traverse to appropriate leaf node
-    while (true) {
-        readNode(file, currentIndex, currentNode);
+        switch (choice)
+        {
+        case 1:
+        {
+            cout << "Enter RecordID and Reference: ";
+            cin >> recordID >> reference;
+            int referenceValue = SearchARecord("BTreeIndex.txt", recordID);
+            if(referenceValue == -1){
+                 InsertNewRecordAtIndex( recordID, reference);
+            }else{
+                cout << "Error: Can't insert RecordID two time." << endl;
+            }
 
-        if (currentNode.is_leaf == 0) break; // Found leaf
+            break;
+        }
+        case 2:
+        {
+            cout << "Enter RecordID to delete: ";
+            cin >> recordID;
+            int referenceValue = SearchARecord("BTreeIndex.txt", recordID);
+            if (referenceValue == -1)
+            {
+                cout << "Record not found in the index." << endl;
+            }
+            else
+            {
+                DeleteRecordFromIndex("BTreeIndex.txt", recordID, m); // Assuming m is 5, adjust as needed
+                cout << "Record deleted successfully." << endl;
+            }
+            break;
+        }
 
-        // Find insertion path
-        int pos = findKeyIndex(currentNode, RecordID);
-        parentStack.push_back(currentIndex);
-        currentIndex = currentNode.refs[pos];
-        isRoot = false;
+        case 3:
+        {
+            DisplayIndexFileContent("BTreeIndex.txt");
+            break;
+        }
+
+        case 4:
+        {
+            cout << "Enter RecordID to search: ";
+            cin >> recordID;
+            int referenceValue = SearchARecord("BTreeIndex.txt", recordID);
+            if (referenceValue == -1)
+            {
+                cout << "Record not found in the index." << endl;
+            }
+            else
+            {
+                cout << "Record found at reference: " << referenceValue << endl;
+            }
+            break;
+        }
+
+        case 5:
+        {
+            cout << "Exiting program." << endl;
+            break;
+        }
+
+        default:
+        {
+            cout << "Invalid choice. Please enter a valid option." << endl;
+        }
+        }
+    } while (choice != 5);
+}
+
+vector<BTreeNode> BTreeIndex::readFile(const char *filename)
+{
+    ifstream File(filename);
+    vector<BTreeNode> Btree;
+    string line;
+    int i = 1;
+    File >> head >> head;
+    getline(File, line);
+    while (getline(File, line))
+    {
+        istringstream iss(line);
+        BTreeNode Node;
+        iss >> Node.isLeaf;
+        Node.place = i;
+        int key, value;
+        while ((iss >> key >> value))
+        {
+            Node.node.emplace_back(key, value);
+        }
+        Btree.push_back(Node);
+        i++;
+    }
+    int count = 0;
+    for (size_t i = 0; i < Btree.size(); i++)
+    {
+        for (size_t j = 0; j < Btree[i].node.size(); j++)
+        {
+            if ((Btree[i].node[j].first != -1) && (Btree[i].node[j].second != -1) )
+            {
+                count++;
+            }
+        }
+        Btree[i].count = count;
+        count = 0;
+    }
+    for (int j = (Btree.size() - 1); j >= 0; --j)
+    {
+        if (Btree[j].isLeaf == 1)
+        {
+            for (int k = 0; k < Btree[j].node.size(); ++k)
+            {
+                if (Btree[j].node[k].second != -1)
+                {
+                    Btree[j].children.push_back(Btree[Btree[j].node[k].second - 1]);
+                }
+            }
+        }
+    }
+    File.close();
+
+
+
+    return Btree;
+}
+
+void BTreeIndex::savefile(const char *filename, vector<BTreeNode> bTree, int m)
+{
+    ofstream outFile(filename, ios::binary);
+    outFile << -1 << "  " << head << "  ";
+    for (int i = 0; i < (m * 2) - 1; ++i)
+    {
+        outFile << -1 << "  ";
+    }
+    outFile << "\n";
+    for (const auto &node : bTree)
+    {
+        outFile << node.isLeaf << "  ";
+
+        for (const auto &pair : node.node)
+        {
+            outFile << pair.first << "  ";
+            outFile << pair.second << "  ";
+        }
+        outFile << "\n";
     }
 
-    // Check for duplicate
-    int existingPos = findKeyIndex(currentNode, RecordID);
-    if (existingPos < m && currentNode.keys[existingPos] == RecordID) {
-        file.close();
+    outFile.close();
+}
+
+int BTreeIndex::split(int i, vector<BTreeNode> bTree) {
+    int newRecordNumber = head - 1;
+    if (i == 0){
+        return split_root(bTree);
+    }
+    if (head == -1){
         return -1;
     }
+    head = bTree[head -1].node[0].first;
+    vector<pair<int, int>> firstNode, secondNode;
+    tie(firstNode, secondNode) = splitOriginalNode(bTree[i].node);
+    int size = firstNode.size();
+    int size2 = secondNode.size();
 
-    // Insert in sorted position
-    int insertPos = findKeyIndex(currentNode, RecordID);
-    for (int i = m-1; i > insertPos; i--) {
-        currentNode.keys[i] = currentNode.keys[i-1];
-        currentNode.refs[i] = currentNode.refs[i-1];
+    bTree[i].isLeaf = 0;
+    bTree[i].count = size;
+    for (int j = size; j < m; ++j) {
+        firstNode.push_back(make_pair(-1,-1));
     }
-    currentNode.keys[insertPos] = RecordID;
-    currentNode.refs[insertPos] = Reference;
-    writeNode(file, currentIndex, currentNode);
-
-    // Handle overflow
-    int keysCount = count_if(currentNode.keys.begin(), currentNode.keys.end(),
-                             [](int k){ return k != -1; });
-
-    while (keysCount > m-1) { // Needs split
-        int newIndex = allocateFreeNode(file);
-        if (newIndex == -1) {
-            file.close();
-            return -1; // No space
-        }
-
-        Node newNode;
-        int splitPos = m/2;
-        int promotedKey = currentNode.keys[splitPos];
-
-        // Split keys and refs
-        copy(currentNode.keys.begin() + splitPos + 1, currentNode.keys.end(), newNode.keys.begin());
-        copy(currentNode.refs.begin() + splitPos + 1, currentNode.refs.end(), newNode.refs.begin());
-        fill(currentNode.keys.begin() + splitPos, currentNode.keys.end(), -1);
-        fill(currentNode.refs.begin() + splitPos, currentNode.refs.end(), -1);
-
-        // Set node types
-        newNode.is_leaf = currentNode.is_leaf;
-        writeNode(file, newIndex, newNode);
-        writeNode(file, currentIndex, currentNode);
-
-        // Prepare promoted key for parent
-        if (parentStack.empty()) { // Splitting root
-            Node newRoot;
-            newRoot.is_leaf = 1;
-            newRoot.keys[0] = promotedKey;
-            newRoot.refs[0] = currentIndex;
-            newRoot.refs[1] = newIndex;
-            writeNode(file, 1, newRoot);
-            break;
-        } else { // Update parent
-            int parentIndex = parentStack.back();
-            parentStack.pop_back();
-            Node parentNode;
-            readNode(file, parentIndex, parentNode);
-
-            // Find insert position in parent
-            int parentPos = findKeyIndex(parentNode, promotedKey);
-            for (int i = m-1; i > parentPos; i--) {
-                parentNode.keys[i] = parentNode.keys[i-1];
-                parentNode.refs[i+1] = parentNode.refs[i];
-            }
-            parentNode.keys[parentPos] = promotedKey;
-            parentNode.refs[parentPos+1] = newIndex;
-            writeNode(file, parentIndex, parentNode);
-
-            // Move up to check parent
-            currentIndex = parentIndex;
-            currentNode = parentNode;
-            keysCount = count_if(currentNode.keys.begin(), currentNode.keys.end(),
-                                 [](int k){ return k != -1; });
-        }
+    for (int j = 0; j < m; ++j) {
+        bTree[i].node[j] = firstNode[j];
     }
-
-    file.close();
-    return currentIndex;
+    bTree[i].node.pop_back();
+    bTree[newRecordNumber].isLeaf = 0;
+    bTree[newRecordNumber].count = size2;
+    for (int j = size; j < m; ++j) {
+        secondNode.push_back(make_pair(-1,-1));
+    }
+    for (int j = 0; j < m; ++j) {
+        bTree[newRecordNumber].node[j] = secondNode[j];
+    }
+    savefile(BTreeFileName, bTree,m);
+    return newRecordNumber;
 }
 
-////////////////////////////////////////////////// Deletion //////////////////////////////////////////////////
-void BTreeIndex::DeleteRecordFromIndex(const char* filename, int RecordID) {
-    fstream file(filename, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) throw runtime_error("File open failed");
-
-    vector<tuple<int, int, int>> path; // (currentIndex, parentIndex, childPos)
-    int current = 1; // Root node
-    int parent = -1, childPos = -1;
-    Node current_node;
-
-    // Phase 1: Find leaf node containing the key
-    while (true) {
-        readNode(file, current, current_node);
-        if (current_node.is_leaf == 0) break;
-
-        int pos = findKeyIndex(current_node, RecordID);
-        path.emplace_back(current, parent, pos);
-        parent = current;
-        current = current_node.refs[pos];
+bool BTreeIndex::split_root(vector<BTreeNode> bTree){
+    int firstNodeIndex = head;
+    int secondNodeIndex = bTree[head -1].node[0].first;
+    if(firstNodeIndex == -1){
+        return false;
     }
-
-    // Check if key exists
-    int pos = findKeyIndex(current_node, RecordID);
-    if (pos >= m || current_node.keys[pos] != RecordID) {
-        file.close();
-        return;
+    if (secondNodeIndex == -1){
+        return false;
     }
-
-    // Phase 2: Delete from leaf node
-    for (int i = pos; i < m-1; i++) {
-        current_node.keys[i] = current_node.keys[i+1];
-        current_node.refs[i] = current_node.refs[i+1];
+    head = bTree[head].node[0].first;
+    vector<pair<int, int>> firstNode, secondNode , root;
+    tie(firstNode, secondNode) = splitOriginalNode(bTree[0].node);
+    int size = firstNode.size();
+    int size2 = secondNode.size();
+    bTree[firstNodeIndex -1].isLeaf = 0;
+    bTree[firstNodeIndex -1].count = size;
+    for (int i = 0; i < size; ++i) {
+        bTree[firstNodeIndex -1].node[i] = firstNode[i];
     }
-    current_node.keys[m-1] = current_node.refs[m-1] = -1;
-    writeNode(file, current, current_node);
+    bTree[secondNodeIndex -1].isLeaf = 0;
+    bTree[secondNodeIndex -1].count = size2;
+    for (int i = 0; i < size2; ++i) {
+        bTree[secondNodeIndex -1].node[i] = secondNode[i];
+    }
+    root.push_back(firstNode[size-1]);
+    root[0].second = firstNodeIndex;
+    root.push_back(secondNode[size2-1]);
+    root[1].second = secondNodeIndex;
+    for (int i = root.size(); i < m; ++i) {
+        root.push_back(make_pair(-1,-1));
+    }
+    if (firstNodeIndex > 2 && secondNodeIndex > 3){
+        bTree[firstNodeIndex-1].isLeaf = 1;
+        bTree[secondNodeIndex -1].isLeaf = 1;
+    }
+    bTree[0].node = root;
+    bTree[0].isLeaf = 1;
+    bTree[0].count = 2;
+    savefile(BTreeFileName, bTree, m);
 
-    // Phase 3: Handle underflow
-    int min_keys = (m % 2 == 0) ? (m/2 - 1) : (m/2);
-    int key_count = count_if(current_node.keys.begin(), current_node.keys.end(),
-                                  [](int k){ return k != -1; });
 
-    while (key_count < min_keys && !path.empty()) {
-        auto [nodeIndex, parentIndex, childPos] = path.back();
-        path.pop_back();
+    return true;
+}
 
-        Node parentNode;
-        readNode(file, parentIndex, parentNode);
+pair<vector<pair<int, int>>, vector<pair<int, int>>> BTreeIndex::splitOriginalNode(const vector<pair<int, int>>& originalNode) {
+    vector<pair<int, int>> firstNode, secondNode;
 
-        // Try borrow from left sibling
-        if (childPos > 0) {
-            int leftSibling = parentNode.refs[childPos-1];
-            Node leftNode;
-            readNode(file, leftSibling, leftNode);
+    auto middle = originalNode.begin() + originalNode.size() / 2;
 
-            int left_keys = count_if(leftNode.keys.begin(), leftNode.keys.end(),
-                                          [](int k){ return k != -1; });
-            if (left_keys > min_keys) {
-                // Borrow logic
-                // ... (implementation omitted for brevity)
-                writeNode(file, nodeIndex, current_node);
-                writeNode(file, leftSibling, leftNode);
-                writeNode(file, parentIndex, parentNode);
-                return;
-            }
+    for (auto it = originalNode.begin(); it != originalNode.end(); ++it) {
+        if (distance(it, middle) > 0) {
+            firstNode.push_back(*it);
+        } else {
+            secondNode.push_back(*it);
         }
-
-        // Try borrow from right sibling
-        if (childPos < m-1 && parentNode.refs[childPos+1] != -1) {
-            int rightSibling = parentNode.refs[childPos+1];
-            Node rightNode;
-            readNode(file, rightSibling, rightNode);
-
-            // Similar borrow logic
-            // ... 
-            return;
-        }
-
-        // Merge with sibling
-        if (childPos > 0) { // Merge with left
-            merge(file, nodeIndex, parentIndex);
-        } else { // Merge with right
-            merge(file, parentNode.refs[childPos+1], parentIndex);
-        }
-
-        // Update current node to parent
-        current = parentIndex;
-        readNode(file, current, current_node);
-        key_count = count_if(current_node.keys.begin(), current_node.keys.end(),
-                                  [](int k){ return k != -1; });
     }
 
-    // Handle root underflow
-    if (key_count == 0 && current == 1) {
-        freeNode(file, current);
+    return make_pair(firstNode, secondNode);
+}
+int BTreeIndex::updateAfterInsert(int parentRecordNumber, int newChildRecordNumber){
+    vector<pair<int,int>> newParent;
+    vector<BTreeNode> bTree = readFile(BTreeFileName);
+    for (int i = 0; i < bTree[parentRecordNumber].children.size(); ++i) {
+        newParent.push_back(make_pair(bTree[parentRecordNumber].children[i].node[bTree[parentRecordNumber].children[i].count -1].first, bTree[parentRecordNumber].children[i].place));
     }
 
-    file.close();
+    if (newChildRecordNumber != -1){
+        newParent.push_back(make_pair(bTree[newChildRecordNumber].node[bTree[newChildRecordNumber].count -1].first,newChildRecordNumber +1));
+    }
+    sort(newParent.begin(), newParent.end(), [](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+        if (a.first != -1 && b.first != -1) {
+            return a.first < b.first;
+        }
+        return a.first != -1;
+    });
+    int size = newParent.size();
+    bTree[parentRecordNumber].count = size;
+
+    for (int i = newParent.size(); i < m; ++i) {
+        newParent.push_back(make_pair(-1,-1));
+    }
+    bTree[parentRecordNumber].node = newParent;
+
+
+    int newFromSplitIndex = -1;
+
+    if (size > m) {
+        newFromSplitIndex = split(parentRecordNumber, bTree);
+    } else {
+        savefile(BTreeFileName, bTree, m);
+    }
+
+    return newFromSplitIndex;
 }
