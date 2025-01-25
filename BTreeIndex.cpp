@@ -3,7 +3,9 @@
 #include <vector>
 #include <tuple>
 #include <algorithm>
+#include <iostream>
 
+using namespace std;
 using namespace std;
 
 int BTreeIndex::m = 0;
@@ -148,6 +150,73 @@ void BTreeIndex::CreateIndexFileFile(const char* filename, int numberOfRecords, 
 
     file.close();
 }
+
+// Display entire index file content
+void BTreeIndex::DisplayIndexFileContent(const char* filename) {
+    fstream file(filename, ios::binary | ios::in);
+    if (!file.is_open()) {
+        cerr << "Error opening file: " << filename << endl;
+        return;
+    }
+
+    // Calculate total nodes from file size
+    file.seekg(0, ios::end);
+    int fileSize = file.tellg();
+    file.seekg(0, ios::beg);
+
+    int nodeSize = sizeof(int) * (2 + 2 * m); // is_leaf + next_free + m keys + m refs
+    int totalNodes = fileSize / nodeSize;
+
+    // Read and print all nodes
+    for (int i = 0; i < totalNodes; i++) {
+        Node node;
+        readNode(file, i, node);
+
+        // Print node information
+        cout << node.is_leaf << " " << node.next_free;
+        for (int j = 0; j < m; j++) {
+            cout << " " << node.keys[j];
+        }
+        for (int j = 0; j < m; j++) {
+            cout << " " << node.refs[j];
+        }
+        cout << endl;
+    }
+    file.close();
+}
+
+// Search for a record in the B-tree
+int BTreeIndex::SearchARecord(const char* filename, int RecordID) {
+    fstream file(filename, ios::binary | ios::in);
+    if (!file.is_open()) return -1;
+
+    int currentIndex = 1; // Start at root
+    Node currentNode;
+
+    while (true) {
+        readNode(file, currentIndex, currentNode);
+
+        // Leaf node check
+        if (currentNode.is_leaf == 0) {
+            int pos = findKeyIndex(currentNode, RecordID);
+            if (pos < m && currentNode.keys[pos] == RecordID) {
+                file.close();
+                return currentNode.refs[pos];
+            }
+            file.close();
+            return -1;
+        }
+
+        // Non-leaf navigation
+        int pos = findKeyIndex(currentNode, RecordID);
+        if (pos >= m || currentNode.refs[pos] == -1) {
+            file.close();
+            return -1; // Invalid path
+        }
+        currentIndex = currentNode.refs[pos];
+    }
+}
+
 ////////////////////////////////////////////////// Insertion //////////////////////////////////////////////////
 int BTreeIndex::InsertNewRecordAtIndex(const char* filename, int RecordID, int Reference) {
     fstream file(filename, ios::binary | ios::in | ios::out);
