@@ -10,8 +10,8 @@ private:
     struct Node {
         int is_leaf;
         int next_free;
-        std::vector<int> keys;
-        std::vector<int> refs;
+        vector<int> keys;
+        vector<int> refs;
 
         Node() : keys(BTreeIndex::getM(), -1),
                       refs(BTreeIndex::getM(), -1) {}
@@ -35,9 +35,17 @@ public:
     static int getM();
     static void CreateIndexFileFile(const char* filename, int numberOfRecords, int m);
     static int InsertNewRecordAtIndex(const char* filename, int RecordID, int Reference);
-    static void DeleteRecordFromIndex(const char* filename, int RecordID);
+    void DeleteRecordFromIndex(const char* filename, int RecordID);
     static void DisplayIndexFileContent(const char* filename);
     static int SearchARecord(const char* filename, int RecordID);
+
+    void handleUnderflow(fstream &file, int nodeIndex, vector<pair<int, int>> &parentStack);
+
+    bool canRedistribute(const Node &node);
+
+    void redistributeFromLeft(fstream &file, int nodeIndex, int leftSiblingIndex, int parentIndex, int keyPos);
+
+    void mergeWithLeft(fstream &file, int nodeIndex, int parentIndex, int keyPos);
 };
 
 #endif //B_TREE_INDEX_MANAGEMENT_SYSTEM_BTREEINDEX_H
