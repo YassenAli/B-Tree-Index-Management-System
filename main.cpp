@@ -70,8 +70,6 @@ int main() {
 
 
 
-
-
     /////////////////for test insert code/////////////////////////
 //    bTreeIndex.CreateIndexFile("BTreeIndex.txt", 10, 5);
 //    bTreeIndex.InsertNewRecordAtIndex(3, 12);
