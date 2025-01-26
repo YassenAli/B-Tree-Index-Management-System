@@ -23,13 +23,7 @@ int main() {
 
         cout << "\n=== Performing Insertions ===" << endl;
         for (const auto& [id, ref] : insertions) {
-            int result = index.InsertNewRecordAtIndex(id, ref);
-            if (result == -1) {
-                cout << "Insertion failed for Record ID: " << id << endl;
-            } else {
-                cout << "Insertion successful for Record ID: " << id << endl;
-                index.DisplayIndexFileContent("BTreeIndex.txt");
-            }
+            index.InsertNewRecordAtIndex(id, ref);
         }
         index.DisplayIndexFileContent("BTreeIndex.txt");
 
