@@ -554,66 +554,86 @@ void BTreeIndex::run() {
     int choice, recordID, reference;
 
     do {
-        cout << "\nB-Tree Index Menu:" << endl;
-        cout << "1. Insert New Record" << endl;
-        cout << "2. Delete Record" << endl;
-        cout << "3. Display Index File Content" << endl;
-        cout << "4. Search for a Record" << endl;
-        cout << "5. Exit" << endl;
+        cout << "\n============================================\n";
+        cout << "            B-Tree Index Menu               \n";
+        cout << "============================================\n";
+        cout << "1. Insert New Record\n";
+        cout << "2. Delete Record\n";
+        cout << "3. Display Index File Content\n";
+        cout << "4. Search for a Record\n";
+        cout << "5. Exit\n";
+        cout << "============================================\n";
         cout << "Enter your choice: ";
         cin >> choice;
 
         switch (choice) {
             case 1: {
-                cout << "Enter RecordID and Reference: ";
-                cin >> recordID >> reference;
+                cout << "\n=== Insert New Record ===\n";
+                cout << "Enter RecordID: ";
+                cin >> recordID;
+                cout << "Enter Reference: ";
+                cin >> reference;
+
                 int referenceValue = SearchARecord("BTreeIndex.txt", recordID);
                 if (referenceValue == -1) {
                     InsertNewRecordAtIndex(recordID, reference);
+                    cout << "\n✔ Record inserted successfully.\n";
                 } else {
-                    cout << "Error: Can't insert RecordID two time." << endl;
+                    cout << "\n❌ Error: RecordID already exists. Cannot insert duplicate records.\n";
                 }
-
                 break;
             }
+
             case 2: {
+                cout << "\n=== Delete Record ===\n";
                 cout << "Enter RecordID to delete: ";
                 cin >> recordID;
+
                 int referenceValue = SearchARecord("BTreeIndex.txt", recordID);
                 if (referenceValue == -1) {
-                    cout << "Record not found in the index." << endl;
+                    cout << "\n❌ Error: Record not found in the index.\n";
                 } else {
-                    DeleteRecordFromIndex("BTreeIndex.txt", recordID, m); // Assuming m is 5, adjust as needed
-                    cout << "Record deleted successfully." << endl;
+                    DeleteRecordFromIndex("BTreeIndex.txt", recordID, m);
+                    cout << "\n✔ Record deleted successfully.\n";
                 }
                 break;
             }
 
             case 3: {
+                cout << "\n=== Displaying Index File Content ===\n";
                 DisplayIndexFileContent("BTreeIndex.txt");
                 break;
             }
 
             case 4: {
+                cout << "\n=== Search for a Record ===\n";
                 cout << "Enter RecordID to search: ";
                 cin >> recordID;
+
                 int referenceValue = SearchARecord("BTreeIndex.txt", recordID);
                 if (referenceValue == -1) {
-                    cout << "Record not found in the index." << endl;
+                    cout << "\n❌ Record not found in the index.\n";
                 } else {
-                    cout << "Record found at reference: " << referenceValue << endl;
+                    cout << "\n✔ Record found! Reference: " << referenceValue << "\n";
                 }
                 break;
             }
 
             case 5: {
-                cout << "Exiting program." << endl;
+                cout << "\nExiting program...\n";
                 break;
             }
 
             default: {
-                cout << "Invalid choice. Please enter a valid option." << endl;
+                cout << "\n❌ Invalid choice. Please enter a number between 1 and 5.\n";
             }
         }
+
+        if (choice != 5) {
+            cout << "\nPress Enter to continue...";
+            cin.ignore();
+            cin.get();
+        }
+
     } while (choice != 5);
 }
