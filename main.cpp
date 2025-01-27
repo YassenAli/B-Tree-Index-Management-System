@@ -1,9 +1,9 @@
 #include "BTreeIndex.h"
 #include "BTreeIndex.cpp"
+#include <iomanip>
 using namespace std;
 
-int main() {
-    const char* filename = "index.bin";
+void Test1(){
     const int initialRecords = 10;
     const int m = 5;
 
@@ -23,9 +23,11 @@ int main() {
 
         cout << "\n=== Performing Insertions ===" << endl;
         for (const auto& [id, ref] : insertions) {
+            cout << "\nInserting Record ID: " << id << " with Reference: " << ref << endl;
             index.InsertNewRecordAtIndex(id, ref);
+            cout << "Current tree state after insertion:" << endl;
+            index.DisplayIndexFileContent("BTreeIndex.txt");
         }
-        index.DisplayIndexFileContent("BTreeIndex.txt");
 
         cout << "\n=== Testing Searches ===" << endl;
         vector<int> searchTests = {3, 10, 15, 99};
@@ -49,43 +51,35 @@ int main() {
 
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
-        return 1;
+        return;
+    }
+}
+
+int main() {
+    cout << "============================================\n";
+    cout << "       B-Tree Index Management System       \n";
+    cout << "============================================\n";
+    cout << "Run assignment example? (y/n): ";
+    char ans;
+    cin >> ans;
+
+    if (ans == 'y' || ans == 'Y') {
+        cout << "\nRunning Assignment Example...\n";
+        Test1();
+    } else {
+        BTreeIndex bTreeIndex;
+        int M;
+
+        cout << "\n=== Create Index File ===\n";
+        cout << "Enter the value of m (order of B-Tree): ";
+        cin >> M;
+
+        bTreeIndex.CreateIndexFile("BTreeIndex.txt", M * 2, M);
+        cout << "\n✔ Index file created successfully with " << M * 2 << " records and m = " << M << ".\n";
+
+        bTreeIndex.run();
     }
 
-    /*
-     BTreeIndex bTreeIndex;
-    cout << "1. Create Index File" << endl;
-    cout << "Enter the m records: ";
-    int M;
-    cin >> M;
-    bTreeIndex.CreateIndexFile("BTreeIndex.txt", M * 2, M);
-    cout << "\nIndex file created successfully." << endl;
-    bTreeIndex.run();*/
-
-
-
-    /////////////////for test insert code/////////////////////////
-//    bTreeIndex.CreateIndexFile("BTreeIndex.txt", 10, 5);
-//    bTreeIndex.InsertNewRecordAtIndex(3, 12);
-//    bTreeIndex.InsertNewRecordAtIndex(7, 24);
-//    bTreeIndex.InsertNewRecordAtIndex(10, 48);
-//    bTreeIndex.InsertNewRecordAtIndex(24, 60);
-//    bTreeIndex.InsertNewRecordAtIndex(14, 72);
-//    bTreeIndex.InsertNewRecordAtIndex(19, 84);
-//    bTreeIndex.InsertNewRecordAtIndex(30, 96);
-//    bTreeIndex.InsertNewRecordAtIndex(15, 108);
-//    bTreeIndex.InsertNewRecordAtIndex(1, 120);
-//    bTreeIndex.InsertNewRecordAtIndex(5, 132);
-//    bTreeIndex.InsertNewRecordAtIndex(2, 144);
-//    bTreeIndex.InsertNewRecordAtIndex(8, 156);
-//    bTreeIndex.InsertNewRecordAtIndex(9, 168);
-//    bTreeIndex.InsertNewRecordAtIndex(6, 180);
-//    bTreeIndex.InsertNewRecordAtIndex(11, 192);
-//    bTreeIndex.InsertNewRecordAtIndex(12, 204);
-//    bTreeIndex.InsertNewRecordAtIndex(17, 216);
-//    bTreeIndex.InsertNewRecordAtIndex(18, 228);
-//    bTreeIndex.InsertNewRecordAtIndex(32, 240);
-
-
+    cout << "\nThank you for using the B-Tree Index Management System!\n";
     return 0;
 }
